@@ -1,0 +1,480 @@
+---
+title: "Evaluation of Kenny Pickett's Rookie Season"
+output:
+  html_document:
+    df_print: paged
+
+---
+## A Statistical Analysis in Performance and Development
+#### Dan Kopycinski
+
+
+With the retirement of Pittsburgh's beloved Ben Roethlisberger, questions arose as to who would fill the shoes of the future Hall of Famer. The first wave of speculation began when former number two overall pick Mitchell Trubisky signed with the Steelers on the first day of free agency. With this signing, many believed that Trubisky would be the short term solution, a bridge to the future in Pittsburgh.  
+
+The Pittsburgh Steelers made headlines when they used the 20th overall pick of the NFL Draft to select Kenny Pickett, a quarterback from the nearby University of Pittsburgh. Pickett was the only quarterback selected in the first two rounds of the draft. Because of this, many experts were critical of the pick by Steelers, calling it a wasted first round pick, considering the many needs of the team.
+
+Trubisky would begin the season as the starting quarterback. In his first three starts, the Steelers put together some rather pedestrian performances to begin the season with a record of 1-2. In a home matchup against the New York Jets, Trubisky's lackluster performance would ultimately lead to a halftime change. The crowd at Acrisure Stadium erupted as Pickett was announced as the quarterback to begin the second half. The Pickett Era had begun in Pittsburgh. The Steelers would ultimately lose the game, but all of Steeler Nation was excited for the experiment to begin. Let's take a dive into how it went.
+
+### The "Back of the Card" Stats
+
+We begin by taking a look at Pickett's performance at the most basic level, the "back of the card" stats. The name comes from the statistics you would typically find on the back of a player's trading cards. They're easy to digest, and can give a quick glimpse into a player's season. Pickett would finish the year with a 7-5 record as a starter, and his statistics can be seen below. 
+
+```{r echo=FALSE, message=FALSE}
+library(nflfastR)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(ggrepel)
+library(kableExtra)
+
+df <- load_pbp(2022) %>%
+  filter(passer_player_name == 'K.Pickett' & sack == 0 & two_point_attempt == 0) %>%
+  group_by(passer_player_name) %>%
+  summarise(Completions = sum(complete_pass), Attempts = sum(pass_attempt), CMP_PCT = round(Completions/Attempts,2), YPA = round(sum(yards_gained)/Attempts,1), TD = sum(touchdown), INT = sum(interception))
+
+kable(df, col.names = c("Passer", "Completions", "Attempts", "Completion Percentage", "Yards Per Attempt", "TD", "INT")) %>%
+  kable_styling(full_width = F)
+```
+
+Here's how Pickett ranked among other NFL quarterbacks in a few of these categories:
+
+* Completion Percentage: 23rd
+* Yards Per Attempt: 32nd
+* Quarterback Rating: 32nd
+
+A quick glance at these statistics and rankings would likely lead one to assume Pickett's play didn't exactly set the league on fire. Finishing near the bottom of the list in most statistical categories and barely mustering a winning record wouldn't exactly win over the hearts of the Pittsburgh faithful. But like it was said earlier, these statistics just show a quick glimpse into Pickett's performance, and a more in depth analysis may tell another story.
+
+### Target Distribution
+
+Pickett had a clear favorite target throughout the season, Diontae Johnson. Johnson commanded a 25% target share, with tight end Pat Freiermuth receiving the second most targets, a 17.8% share. However, Johnson's targets were not very effective, posting an EPA (Expected Points Added) per play of -0.08. Also, neither Johnson or Freiermuth caught a touchdown from Pickett all season. Fellow rookie standout George Pickens generated the best production for Pickett, tallying an EPA/play of 0.63 and 4 touchdowns. Another rookie, running back Jaylen Warren, was also efficient for Pickett, catching 85% of his targets for an EPA/play of 0.44.
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022) %>%
+  filter(passer_player_name == 'K.Pickett' & !is.na(receiver_player_name)) %>%
+  group_by(receiver_player_name) %>%
+  summarise(targets = n(), catches = sum(complete_pass), catch_rate = round(catches/targets,2), YPC = round(sum(yards_gained)/catches,2), EPA = round(mean(epa),2), TD = sum(touchdown)) %>%
+  arrange(-targets)
+kable(df, col.names = c("Receiver", "Targets", "Catches","Catch Rate", "YPC", "EPA/play","TD")) %>%
+  kable_styling(full_width = F)
+
+```
+
+### Early Down Passing
+
+Having success throwing the ball on early downs and avoiding third downs has shown to be an indicator of offensive success in the NFL. Of the top 10 teams in early down pass rate, 7 made the playoffs. In addition, 7 of the top 10 teams in early down EPA/play made the playoffs.
+
+```{r echo=FALSE, message=FALSE}
+
+df <- load_pbp(2022)
+
+early_down_freq <- df %>%
+  filter(down == 1 | down == 2) %>%
+  filter(play_type == 'pass' | play_type == 'run') %>%
+  group_by(posteam) %>%
+  summarise(pass_rate = round(sum(play_type == 'pass')/n(),2)) %>%
+  arrange(-pass_rate)
+
+early_down_epa <- df %>%
+  filter(down == 1 | down == 2) %>%
+  filter(play_type == 'pass') %>%
+  group_by(posteam) %>%
+  summarise(epa = round(mean(epa),2)) %>%
+  arrange(-epa)
+
+early_down <- merge(early_down_freq, early_down_epa, by = 'posteam') %>%
+  arrange(-pass_rate) 
+
+early_down_rate_10 <- early_down %>%
+  slice_max(pass_rate, n=10)
+
+
+early_down_epa_10 <- early_down %>%
+  slice_max(epa, n=10)
+
+
+
+kable(early_down_rate_10, col.names = c("Team","Pass Rate", "EPA/Play"), caption = "Top 10 Early Down Pass Rate") %>%
+  kable_styling(full_width = F ,position = "float_left")
+kable(early_down_epa_10, col.names = c("Team","Pass Rate", "EPA/Play"), caption = "Top 10 Early Down EPA/Play") %>%
+  kable_styling(full_width = F)
+
+```
+
+The Steelers would finish the season ranked 23rd in early down pass rate and 29th in early down passing EPA/Play. 
+
+```{r echo=FALSE, message=FALSE}
+ggplot(early_down, aes(pass_rate, epa)) +
+  geom_point() +
+  geom_text_repel(label = early_down$posteam) +
+  xlab("Pass Rate") + ylab("EPA/Play") + ggtitle("Early Down Pass Rate and Efficiency by Team")
+```
+
+Of 30 quarterbacks with at least 200 pass attempts on early downs, Pickett ranked 24th in EPA/Play.
+
+```{r echo=FALSE, message=FALSE}
+
+qbs <- df %>%
+  filter(down == 1 | down == 2) %>% 
+  filter(!is.na(passer_player_name)) %>%
+  select(passer_player_name, posteam, complete_pass, pass, epa) %>%
+  group_by(passer_player_name, posteam) %>%
+  summarise(complete = sum(complete_pass), attempts = sum(pass), epa = round(mean(epa),2))
+
+qbs_over_200_ats <- qbs %>%
+  filter(attempts > 200) %>%
+  select(posteam, passer_player_name, epa) %>%
+  arrange(-epa)
+
+epa_vs_pass_rate <- merge(qbs_over_200_ats, early_down_freq, by = 'posteam')
+
+ggplot(epa_vs_pass_rate, aes(pass_rate, epa)) +
+  geom_point() +
+  geom_text_repel(label = epa_vs_pass_rate$passer_player_name) +
+  xlab("Pass Rate") + ylab("EPA/Play") + ggtitle("Early Down Pass Rate and Efficiency by QB")
+```
+
+Pickett also ranked 26th in success rate in early down passing. Success is defined as the pass resulting in either a first down or touchdown.
+
+```{r echo=FALSE, message=FALSE}
+
+df <- load_pbp(2022) %>%
+  filter(down == 1 | down == 2) %>%
+  filter(play_type == 'pass') %>%
+  mutate(success = case_when(yards_gained >= ydstogo ~ 1,
+                             yards_gained < ydstogo ~ 0)) %>%
+  group_by(passer_player_name) %>%
+  summarise(successful = sum(success), attempts = n(),success_rate = sum(success)/n(), epa = mean(epa)) %>%
+  filter(attempts > 200) %>%
+  arrange(-success_rate)
+            
+ggplot(df, aes(epa, success_rate)) +
+  geom_point() +
+  geom_text_repel(label = df$passer_player_name) +
+  xlab("EPA/Play") + ylab("Success Rate") + ggtitle("Early Down Success and Efficiency by QB")
+```
+
+One factor contributing to Pickett's low early down success rate is throwing the ball short of the yardage to gain. Pickett threw the ball short of the sticks on only 30% of his first down attempts and 36% of his second down attempts, ranking him 23rd in pass rate beyond the line to gain.
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022) %>%
+  filter(play_type == 'pass' & sack == 0 & two_point_attempt == 0) %>%
+  filter(passer_player_name == 'K.Pickett') %>%
+  mutate(past_sticks = case_when(air_yards >= ydstogo ~ 1,
+                                air_yards < ydstogo ~ 0)) %>%
+  group_by(down) %>%
+  summarise(attempts = n(),past = sum(past_sticks), past_sticks_rate = round(sum(past_sticks)/n(),2))
+
+
+kable(df, col.names = c("Down", "Attempts", "Passes Past Sticks", "Past Sticks Rate"), caption = "Passes Thrown Beyond The Line To Gain") %>%
+  kable_styling(full_width = F)
+```
+
+### Third Down Passing
+
+Another indicator of offensive success in the NFL is the ability to convert on third down. Of the top 10 teams in EPA/play on third down passing attempts, 7 made the playoffs and 9 finished with winning records, including Pittsburgh. 
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022)
+
+third_down_freq <- df %>%
+  filter(down == 3) %>%
+  filter(play_type == 'pass' | play_type == 'run') %>%
+  group_by(posteam) %>%
+  summarise(pass_rate = round(sum(play_type == 'pass')/n(),2)) %>%
+  arrange(-pass_rate)
+
+third_down_epa <- df %>%
+  filter(down == 3) %>%
+  filter(play_type == 'pass') %>%
+  group_by(posteam) %>%
+  summarise(epa = round(mean(epa),2)) %>%
+  arrange(-epa)
+
+third_down <- merge(third_down_freq, third_down_epa, by = 'posteam') %>%
+  arrange(-pass_rate) 
+
+third_down_epa_10 <- third_down %>%
+  slice_max(epa, n=10)
+
+kable(third_down_epa_10, col.names = c("Team", "Pass Rate", "EPA/Play"), caption = "Third Down Pass Rate by Team") %>%
+  kable_styling(full_width = F)
+
+```
+Pickett ranked 9th in EPA/play out of 24 quarterbacks with at least 100 third down attempts. He also ranked 12th in third down success rate when passing.
+
+```{r echo=FALSE, message=FALSE}
+
+df <- load_pbp(2022)
+
+qbs <- df %>%
+  filter(down == 3) %>% 
+  filter(!is.na(passer_player_name)) %>%
+  select(passer_player_name, posteam, complete_pass, pass, epa) %>%
+  group_by(passer_player_name, posteam) %>%
+  summarise(complete = sum(complete_pass), attempts = sum(pass), epa = round(mean(epa),2))
+
+qbs_over_200_ats <- qbs %>%
+  filter(attempts > 100) %>%
+  select(posteam, passer_player_name, epa) %>%
+  arrange(-epa)
+
+epa_vs_pass_rate <- merge(qbs_over_200_ats, early_down_freq, by = 'posteam')
+
+ggplot(epa_vs_pass_rate, aes(pass_rate, epa)) +
+  geom_point() +
+  geom_text_repel(label = epa_vs_pass_rate$passer_player_name) +
+  xlab("Pass Rate") + ylab("EPA/Play") + ggtitle("Third Down Pass Rate and Efficiency by QB")
+
+df <- load_pbp(2022) %>%
+  filter(down == 3) %>%
+  filter(play_type == 'pass') %>%
+  mutate(success = case_when(yards_gained >= ydstogo ~ 1,
+                             yards_gained < ydstogo ~ 0)) %>%
+  group_by(passer_player_name) %>%
+  summarise(successful = sum(success), attempts = n(),success_rate = sum(success)/n(), epa = mean(epa)) %>%
+  filter(attempts > 100) %>%
+  arrange(-success_rate)
+
+ggplot(df, aes(success_rate, epa)) +
+  geom_point() +
+  geom_text_repel(label = df$passer_player_name) +
+  xlab("Success Rate") + ylab("EPA/Play") + ggtitle("Third Down Success and Efficiency by QB")
+```
+
+### Airing It Out
+
+As NFL offenses have developed, deep shots down the field have become a staple in schemes. Teams are more frequently stretching the ball down the field and looking for quick hitter plays to optimize scoring. Among quarterbacks with at least 300 pass attempts, Pickett ranked 16th in average air yards per attempt at 7.51. However, when it comes to airing the ball out, Pickett struggled to be efficient. On passes of 30+ air yards, Pickett was 2 of 10 with an EPA/play of -0.73. But where Pickett really struggled was on passes between 10 and 20 air yards.
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022) %>%
+  filter(passer_player_name == "K.Pickett" & !is.na(air_yards)) %>%
+  mutate(depth = case_when(air_yards <= 10 ~ "10 or Fewer",
+                           air_yards >=11 & air_yards <=20 ~ "11 to 20",
+                           air_yards > 20 ~ "Over 20")) %>%
+  group_by(depth) %>%
+  summarise(Completions = sum(complete_pass), Attempts = n(),CMP_PCT = round(Completions/Attempts,2),EPA = round(mean(epa),2))
+
+kable(df, col.names = c("Depth", "Completions", "Attempts", "Completion Percentage", "EPA/Play"), caption = "Efficiency by Air Yards") %>%
+  kable_styling(full_width = F)
+  
+
+```
+
+### The Red Zone
+
+Another area where Pickett seemed to struggle finding success was the red zone. Out of 32 quarterbacks with at least 35 attempts inside the opponent's 20 yard line, Pickett ranked 30th in EPA/Play and last in completion percentage.
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022) %>%
+  filter(season_type == 'REG')
+
+redzone <- df %>%
+  filter(side_of_field == defteam & yardline_100 <= 20)
+
+redzone_passing <- redzone %>%
+  group_by(passer_player_name) %>%
+  summarise(complete = sum(complete_pass), attempts = n(),cmp_pct = round(complete/attempts,2),EPA = round(mean(epa),2)) %>%
+  filter(attempts >=35 & !is.na(passer_player_name)) %>%
+  arrange(-EPA)
+
+ggplot(redzone_passing, aes(cmp_pct, EPA)) +
+  geom_point() +
+  geom_text_repel(label = redzone_passing$passer_player_name) +
+  xlab("Completion %") + ylab("EPA/Play") + ggtitle("Redzone Efficiency by QB")
+
+```
+
+### The Final 4
+
+One bright spot for Pickett was his ability at the end of games. When looking at the final four minutes of games while their team was trailing, Pickett cracked the top 5 in EPA/play out of quarterbacks with at least 30 attempts in this scenario. 
+
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022)
+
+final_four_minutes <- df %>%
+  filter(qtr == 4 & quarter_seconds_remaining <= 240)
+
+trailing <- final_four_minutes %>%
+  filter(score_differential <0 & play_type == 'pass') %>%
+  group_by(passer_player_name) %>%
+  summarise(complete = sum(complete_pass), attempts = n(), ypa = round(mean(yards_gained),2), EPA = round(mean(epa),2), TD = sum(touchdown), INT = sum(interception)) %>%
+  filter(attempts > 30) %>%
+  arrange(-EPA) %>%
+  slice_max(EPA, n=5)
+
+kable(trailing, col.names = c("Passer", "Completions", "Attempts", "YPA", "EPA/Play","TD","INT"), caption = "Final 4 Minutes While Trailing") %>%
+  kable_styling(full_width = F)
+
+```
+
+
+### Making Plays On The Ground
+
+Pickett was able to add to the offense with his playmaking ability with his legs. On quarterback scrambles, Pickett produced a first down 39% of the time, the 11th highest rate of quarterbacks with at least 25 scramble attempts. On designed quarterback runs, Pickett picked up a first down 48% of the time, good for the third best rate.
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022) %>%
+  filter(rusher_player_name == 'K.Pickett') %>%
+  mutate(run_type = case_when(qb_scramble == 1 ~ "Scramble",
+                              qb_scramble == 0 ~ "Designed")) %>%
+  group_by(run_type) %>%
+  summarise(attempts = n(),yards = round(mean(yards_gained),2),first_down = sum(first_down),first_down_rate = round(first_down/attempts,2),TD = sum(touchdown))
+
+kable(df, col.names = c("Run Type", "Attempts", "Yards Per Carry", "First Downs", "First Down Rate", "TD"), caption = "K.Pickett") %>%
+  kable_styling(full_width = F)
+
+df <- load_pbp(2022) %>%
+  filter(qb_scramble == 1) %>%
+  group_by(rusher_player_name) %>%
+  summarise(attempts = n(),yards = round(mean(yards_gained),2),first_down = sum(first_down),first_down_rate = round(first_down/attempts,2),TD = sum(touchdown)) %>%
+  filter(attempts >= 25) %>%
+  arrange(-first_down_rate) %>%
+  slice_max(first_down_rate, n = 11)
+
+kable(df, col.names = c("Rusher","Attempts","Yards Per Carry", "First Downs", "First Down Rate", "TD"), caption = "Scrambles") %>%
+  kable_styling(full_width = F)
+
+df <- load_pbp(2022) %>%
+  filter(qb_scramble == 0) %>%
+  group_by(rusher_player_name) %>%
+  summarise(attempts = n(),yards = round(mean(yards_gained),2),first_down = sum(first_down),first_down_rate = round(first_down/attempts,2),TD = sum(touchdown)) %>%
+  filter(attempts >= 25) %>%
+  arrange(-first_down_rate) %>%
+  slice_max(first_down_rate, n=5)
+
+kable(df, col.names = c("Rusher","Attempts","Yards Per Carry", "First Downs", "First Down Rate", "TD"), caption = "Designed") %>%
+  kable_styling(full_width = F)
+
+```
+
+### A Tale of Two Seasons
+
+There is a clear divide in Pickett's play throughout the season: the bye week. Not only did Pickett's performance improve, the team started winning. In weeks 4 through 8, the Steelers went 1-4, with the only win being closed out by Trubisky, as Pickett left the game with a concussion. Games after week 9, however, the Steelers went 6-1 in games that Pickett started and finished the game (he would leave week 14 early and miss week 15 with a concussion). During those seven games, Pickett would lead 3 fourth-quarter comebacks and have 4 game-winning drives. 
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022) %>%
+  filter(season_type == 'REG')
+
+bye_week <- df %>%
+  mutate(Period = case_when(week > 9 ~ "After Bye",
+                            week < 9 ~ "Before Bye")) %>%
+  filter(passer_player_name == 'K.Pickett') %>%
+  group_by(Period) %>%
+  summarise(complete = sum(complete_pass), attempts = n(), YPA = round(mean(yards_gained),2), EPA = round(mean(epa),2), TD = sum(touchdown), INT = sum(interception)) %>%
+  arrange(desc(Period))
+
+kable(bye_week, col.names = c("Period", "Completions","Attempts", "YPA", "EPA", "TD", "INT")) %>%
+  kable_styling(full_width = F)
+
+weeks <- df %>%
+  filter(passer_player_name == 'K.Pickett' & week != 14) %>%
+  group_by(week) %>%
+  summarise(EPA = mean(epa))
+
+ggplot(weeks, aes(week, EPA)) +
+  geom_col() +
+  xlab("Week") + ylab("EPA/Play") + ggtitle("Passing EPA/Play by Week")
+
+```
+
+Now that we've seen the clear difference in play throughout the season, let's revisit some statistics, but from the lens of the back half of the season. Pickett's connection with his receivers developed, as top targets Johnson, Freiermuth and Pickens all saw increases in YPC and EPA/Play after the bye.
+
+```{r echo=FALSE, message=FALSE}
+df_before <- load_pbp(2022) %>%
+  filter(passer_player_name == 'K.Pickett' & !is.na(receiver_player_name) & week < 9) %>%
+  group_by(receiver_player_name) %>%
+  summarise(targets = n(), catches = sum(complete_pass), YPC = round(sum(yards_gained)/catches,2), EPA = round(mean(epa),2), TD = sum(touchdown)) %>%
+  arrange(-targets)
+
+df_after <- load_pbp(2022) %>%
+  filter(passer_player_name == 'K.Pickett' & !is.na(receiver_player_name) & week > 9) %>%
+  group_by(receiver_player_name) %>%
+  summarise(targets = n(), catches = sum(complete_pass), YPC = round(sum(yards_gained)/catches,2), EPA = round(mean(epa),2), TD = sum(touchdown)) %>%
+  arrange(-targets)
+
+kable(df_before, col.names = c("Receiver", "Targets", "Catches", "YPC", "EPA/play","TD"), caption = "Before Bye") %>%
+  kable_styling(full_width = F, position = "float_left")
+
+kable(df_after, col.names = c("Receiver", "Targets", "Catches", "YPC", "EPA/play","TD"), caption = "After Bye") %>%
+  kable_styling(full_width = F, position = "right")
+
+```
+
+Pickett did not see much change in early down passing efficiency, however he did make significant strides in third down success.
+
+```{r echo=FALSE, message=FALSE}
+
+df <- load_pbp(2022) %>% 
+  filter(down == 3) %>%
+  filter(play_type == 'pass' & season_type == 'REG' & passer_player_name == 'K.Pickett') %>%
+  mutate(success = case_when(yards_gained >= ydstogo ~ 1,
+                             yards_gained < ydstogo ~ 0)) %>%
+  mutate(Period = case_when(week > 9 ~ "After Bye",
+                            week < 9 ~ "Before Bye")) %>%
+  group_by(Period) %>%
+  summarise(success = sum(success), attempts = n(),success_pct = round(sum(success)/n(),2), epa = round(mean(epa),2)) %>%
+  arrange(desc(Period))
+
+kable(df, col.names = c("Period", "Success", "Attempts", "Success Rate", "EPA/Play"), caption = "Third Down Success") %>%
+  kable_styling(full_width = F)
+
+```
+
+Pickett also showed great improvement in his down field passing.
+
+
+```{r echo=FALSE, message=FALSE}
+df_before <- load_pbp(2022) %>%
+  filter(passer_player_name == "K.Pickett" & !is.na(air_yards) & week < 9) %>%
+  mutate(depth = case_when(air_yards <= 10 ~ "10 or Fewer",
+                           air_yards >=11 & air_yards <=20 ~ "11 to 20",
+                           air_yards > 20 ~ "Over 20")) %>%
+  group_by(depth) %>%
+  summarise(Completions = sum(complete_pass), Attempts = n(),CMP_PCT = round(Completions/Attempts,2),EPA = round(mean(epa),2))
+
+df_after <- load_pbp(2022) %>%
+  filter(passer_player_name == "K.Pickett" & !is.na(air_yards) & week > 9) %>%
+  mutate(depth = case_when(air_yards <= 10 ~ "10 or Fewer",
+                           air_yards >=11 & air_yards <=20 ~ "11 to 20",
+                           air_yards > 20 ~ "Over 20")) %>%
+  group_by(depth) %>%
+  summarise(Completions = sum(complete_pass), Attempts = n(),CMP_PCT = round(Completions/Attempts,2),EPA = round(mean(epa),2))
+
+
+kable(df_before, col.names = c("Depth", "Completions", "Attempts", "CMP %", "EPA/Play"), caption = "Before Bye") %>%
+  kable_styling(full_width = F, position = "float_left")
+
+kable(df_after, col.names = c("Depth", "Completions", "Attempts", "CMP %", "EPA/Play"), caption = "After Bye") %>%
+  kable_styling(full_width = F,  position = "right")
+
+```
+
+The final four minutes were defining moments for the latter part of Pickett's season. As previously mentioned, he led 3 fourth quarter comebacks, and also added a fourth game winning drive. The numbers tell the story, as Pickett significantly improved in completion percentage, YPA, EPA and TD/INT ratio while trailing in the final four minutes.
+
+```{r echo=FALSE, message=FALSE}
+df <- load_pbp(2022)
+
+final_four_minutes <- df %>%
+  filter(qtr == 4 & quarter_seconds_remaining <= 240)
+
+trailing <- final_four_minutes %>%
+  filter(score_differential <0 & play_type == 'pass' & passer_player_name == 'K.Pickett') %>%
+  mutate(Period = case_when(week > 9 ~ "After Bye",
+                            week < 9 ~ "Before Bye")) %>%
+  group_by(Period) %>%
+  summarise(complete = sum(complete_pass), attempts = n(), ypa = round(mean(yards_gained),2), EPA = round(mean(epa),2), TD = sum(touchdown), INT = sum(interception)) %>%
+  arrange(desc(Period))
+
+
+kable(trailing, col.names = c("Period", "Completions", "Attempts", "YPA", "EPA/Play","TD","INT")) %>%
+  kable_styling(full_width = F)
+
+```
+
+
+### Summary
+
+Pickett's rookie season did not light up the stat sheet or stir up "Rookie of the Year" conversations. He struggled early, turning the ball over often and failing to put points on the board. As the season progressed, however, it was clear that Pickett became more comfortable, developed greater chemistry with his pass catchers, and increased his production on the field. The statistics confirm that Pickett showed improvement throughout the season, especially in key areas. His leadership and composure was also on display late in the season. While the "back of the card" stats may not make headlines, the city of Pittsburgh can rest assured that they have strong developing quarterback with an ability to win, and is only getting better. 
+
+
